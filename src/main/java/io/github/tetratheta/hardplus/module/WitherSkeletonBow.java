@@ -107,9 +107,9 @@ public class WitherSkeletonBow implements Listener {
     double originalDamage = e.getDamage();
     double newDamage = originalDamage - (originalDamage * 0.25 * (bowDamageLevel + 1));
     e.setDamage(newDamage);
-    // Set the fire back to whatever it was when the arrow hit
+    // Remove 5 seconds of fire from the arrow (5 seconds = 100 ticks)
     int playerFire = player.getFireTicks();
-    System.out.println(playerFire);
+    player.setFireTicks(playerFire - 100);
   }
 
   private void giveHpEquipment(WitherSkeleton witherSkeleton) {
