@@ -13,6 +13,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -29,7 +30,8 @@ public class WitherSkeletonBow implements Listener {
   final int bowDamageLevel;
   final int bowKnockbackLevel;
   final double bowWSSpawnChance;
-  final NamespacedKey key = new NamespacedKey("hardplus", "wither-skeleton-arrow");
+  final NamespacedKey witherSkeletonKey = new NamespacedKey("hardplus", "wither-skeleton");
+  final NamespacedKey witherSkeletonArrowKey = new NamespacedKey("hardplus", "wither-skeleton-arrow");
   final Random random = new Random();
 
   public WitherSkeletonBow(double bowSpawnChance, int arrowDamageLevel, int arrowKnockbackLevel,
@@ -41,43 +43,14 @@ public class WitherSkeletonBow implements Listener {
     this.arrowWitherLevel = arrowWitherLevel;
   }
 
-  @EventHandler
-  public void onNonHPPlayerHit(EntityDamageByEntityEvent e) {
-    // We can't use HPPlayer#checkPermGameMode here
-    // Why not? Does work fine.
-    if (!(e.getDamager() instanceof Arrow arrow)) return;
-    if (e.getEntity() instanceof Player player && !PlayerUtil.checkPermGameMode(player, Perm.WITHER_SKELETON_BOW)) {
-      Byte value = arrow.getPersistentDataContainer().get(key, PersistentDataType.BYTE);
-      if (Objects.isNull(value)) return;
-      if (value.equals((byte) 1)) {
-        // Remove Wither effect
-        arrow.clearCustomEffects();
-        // Decrease increased damage with Power
-        double originalDamage = e.getDamage();
-        double newDamage = originalDamage - (originalDamage * 0.25 * (bowDamageLevel + 1));
-        e.setDamage(newDamage);
-        // Since Wither Skeleton shoots flamed arrow, we do not catch fire of non-HP player.
-      }
-    }
-  }
-
-  @EventHandler
-  public void onWitherSkeletonShoot(EntityShootBowEvent e) {
-    if (!(e.getEntity() instanceof WitherSkeleton)) return;
-    if (!(e.getProjectile() instanceof Arrow arrow)) return;
-
-    arrow.addCustomEffect(new PotionEffect(PotionEffectType.WITHER, 800, arrowWitherLevel), true);
-    arrow.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
-    e.setProjectile(arrow);
-  }
-
+  // 1. First we need to spawn an HP-WitherSkeleton
   @EventHandler
   public void onWitherSkeletonSpawn(CreatureSpawnEvent e) {
-    if (!(e.getEntity() instanceof WitherSkeleton)) return;
+    if (!(e.getEntity() instanceof WitherSkeleton witherSkeleton)) return;
     if (random.nextDouble() * 100 >= bowWSSpawnChance) return;
 
-    EntityEquipment mobInventory = e.getEntity().getEquipment();
-    if (mobInventory == null) return;
+    witherSkeleton.getPersistentDataContainer().set(witherSkeletonKey, PersistentDataType.BOOLEAN, true);
+    EntityEquipment mobInventory = witherSkeleton.getEquipment();
     ItemStack bow = new ItemStack(Material.BOW);
     ItemMeta bowMeta = bow.getItemMeta();
     bowMeta.addEnchant(Enchantment.POWER, bowDamageLevel, true);
@@ -85,6 +58,76 @@ public class WitherSkeletonBow implements Listener {
     bowMeta.addEnchant(Enchantment.PUNCH, bowKnockbackLevel, true);
     bow.setItemMeta(bowMeta);
     mobInventory.setItemInMainHand(bow);
+    mobInventory.setItemInMainHandDropChance(0);
+  }
+
+  // 2. The HP-WitherSkeleton is "friendly" to non-HP players
+  //  and changes it's weapon accordingly
+  @EventHandler
+  public void onTargetChange(EntityTargetLivingEntityEvent e) {
+    if (!(e.getEntity() instanceof WitherSkeleton witherSkeleton)) return;
+    Boolean isHPWitherSkeleton =
+        witherSkeleton.getPersistentDataContainer().get(witherSkeletonKey, PersistentDataType.BOOLEAN);
+    if (Boolean.FALSE.equals(isHPWitherSkeleton)) return;
+    if (witherSkeleton.getTarget() == null || !(witherSkeleton.getTarget() instanceof Player targetedPlayer)) return;
+
+    if (PlayerUtil.checkPermGameMode(targetedPlayer, Perm.WITHER_SKELETON_BOW)) {
+      giveHpEquipment(witherSkeleton);
+    } else {
+      giveFriendlyEquipment(witherSkeleton);
+    }
+  }
+
+  // 3. If an HP-WitherSkeleton shots an arrow we'll add the wither effect,
+  //  also we'll track it this will be helpful to save non-HP players from "ricochet"
+  @EventHandler
+  public void onWitherSkeletonShoot(EntityShootBowEvent e) {
+    if (!(e.getEntity() instanceof WitherSkeleton witherSkeleton)) return;
+    Boolean isHPWitherSkeleton =
+        witherSkeleton.getPersistentDataContainer().get(witherSkeletonKey, PersistentDataType.BOOLEAN);
+    if (Boolean.FALSE.equals(isHPWitherSkeleton)) return;
+    if (!(e.getProjectile() instanceof Arrow arrow)) return;
+    arrow.getPersistentDataContainer().set(witherSkeletonArrowKey, PersistentDataType.BOOLEAN, true);
+    arrow.addCustomEffect(new PotionEffect(PotionEffectType.WITHER, 800, arrowWitherLevel), true);
+    e.setProjectile(arrow);
+  }
+
+  // 4. Save non-HP players from "ricochet"
+  @EventHandler
+  public void onNonHPPlayerHit(EntityDamageByEntityEvent e) {
+    if (!(e.getDamager() instanceof Arrow arrow)) return;
+    Boolean isHPWitherArrow =
+        arrow.getPersistentDataContainer().get(witherSkeletonKey, PersistentDataType.BOOLEAN);
+    if (Boolean.FALSE.equals(isHPWitherArrow)) return;
+    if (!(e.getEntity() instanceof Player player)) return;
+    if (PlayerUtil.checkPermGameMode(player, Perm.WITHER_SKELETON_BOW)) return;
+    // Remove Wither effect
+    arrow.clearCustomEffects();
+    // Decrease increased damage with Power
+    double originalDamage = e.getDamage();
+    double newDamage = originalDamage - (originalDamage * 0.25 * (bowDamageLevel + 1));
+    e.setDamage(newDamage);
+    // Remove 5 seconds of fire from the arrow (5 seconds = 100 ticks)
+    int playerFire = player.getFireTicks();
+    player.setFireTicks(playerFire - 100);
+  }
+
+  private void giveHpEquipment(WitherSkeleton witherSkeleton) {
+    EntityEquipment mobInventory = witherSkeleton.getEquipment();
+    ItemStack bow = new ItemStack(Material.BOW);
+    ItemMeta bowMeta = bow.getItemMeta();
+    bowMeta.addEnchant(Enchantment.POWER, bowDamageLevel, true);
+    bowMeta.addEnchant(Enchantment.FLAME, 1, true);
+    bowMeta.addEnchant(Enchantment.PUNCH, bowKnockbackLevel, true);
+    bow.setItemMeta(bowMeta);
+    mobInventory.setItemInMainHand(bow);
+    mobInventory.setItemInMainHandDropChance(0);
+  }
+
+  private void giveFriendlyEquipment(WitherSkeleton witherSkeleton) {
+    EntityEquipment mobInventory = witherSkeleton.getEquipment();
+    ItemStack stoneSword = new ItemStack(Material.STONE_SWORD);
+    mobInventory.setItemInMainHand(stoneSword);
     mobInventory.setItemInMainHandDropChance(0);
   }
 }
