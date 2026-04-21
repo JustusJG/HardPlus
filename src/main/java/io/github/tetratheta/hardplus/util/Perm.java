@@ -2,6 +2,7 @@ package io.github.tetratheta.hardplus.util;
 
 public enum Perm {
   COLD_DAMAGE("hardplus.cold-damage"),
+  CONCRETE_WATER("hardplus.concrete-water"),
   CREEPER_CHARGE("hardplus.creeper-charge"),
   CREEPER_EXPLODE("hardplus.creeper-explode"),
   DAMAGE_CRITICAL("hardplus.damage-critical"),

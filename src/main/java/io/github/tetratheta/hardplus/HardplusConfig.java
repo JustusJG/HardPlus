@@ -10,6 +10,7 @@ public class HardplusConfig extends BaseConfig {
   final Hardplus plugin;
 
   final String strColdDamage = "module.cold-damage.";
+  final String strConcreteWater = "module.concrete-water.";
   final String strCreeperCharge = "module.creeper-charge.";
   final String strCreeperExplode = "module.creeper-explode.";
   final String strDamageCritical = "module.damage-critical.";
@@ -44,6 +45,14 @@ public class HardplusConfig extends BaseConfig {
       ColdDamage coldDamage = new ColdDamage();
       registerListeners(coldDamage);
       tasks.add(coldDamage.getTask().runTaskTimer(plugin, delay, period));
+    }
+    // Concrete Water
+    if (getBoolean(strConcreteWater + "enable", true)) {
+      float minimumFallDistance = getLong(strConcreteWater + "minimum-fall-distance", 8, 4, 100);
+      double minimumVelocity = getDouble(strConcreteWater + "minimum-velocity", .4, .4, 2);
+      double velocityDamageMultiplier = getDouble(strConcreteWater + "velocity-damage-multiplier", 10, 1, 20);
+
+      registerListeners(new ConcreteWater(minimumFallDistance, minimumVelocity, velocityDamageMultiplier));
     }
     // Creeper Charge
     if (getBoolean(strCreeperCharge + "enable", true)) {

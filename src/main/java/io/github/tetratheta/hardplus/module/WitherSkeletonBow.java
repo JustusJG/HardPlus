@@ -79,7 +79,9 @@ public class WitherSkeletonBow implements Listener {
   }
 
   // 3. If an HP-WitherSkeleton shots an arrow we'll add the wither effect,
-  //  also we'll track it this will be helpful to save non-HP players from "ricochet"
+  //  also we'll track it this will be helpful to save non-HP players from "ricochet".
+  //  Through step 2 an HP-WitherSkeleton shouldn't be able to shoot a non-HP player,
+  //  so we don't have to check who it's targeting.
   @EventHandler
   public void onWitherSkeletonShoot(EntityShootBowEvent e) {
     if (!(e.getEntity() instanceof WitherSkeleton witherSkeleton)) return;

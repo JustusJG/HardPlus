@@ -15,13 +15,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class WorldGuardHook {
+  public static String WILDCARD_FLAG = "hardplus-all";
   private final Map<String, StateFlag> worldGuardFlags = new HashMap<>();
 
   public WorldGuardHook() {
     FlagRegistry registry = WorldGuard.getInstance().getFlagRegistry();
     try {
+      StateFlag flag = new StateFlag(WILDCARD_FLAG, false);
+      registry.register(flag);
+      worldGuardFlags.put(WILDCARD_FLAG, flag);
+
       for (Perm perm : Perm.values()) {
-        StateFlag flag = new StateFlag(perm.flagName(), false);
+        flag = new StateFlag(perm.flagName(), false);
         registry.register(flag);
         worldGuardFlags.put(perm.flagName(), flag);
       }
@@ -35,7 +40,19 @@ public class WorldGuardHook {
     RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
     RegionQuery query = container.createQuery();
 
-    StateFlag stateFlag = worldGuardFlags.get(flagName);
-    return query.testState(localPlayer.getLocation(), localPlayer, stateFlag);
+    boolean allow = query.testState(localPlayer.getLocation(), localPlayer, worldGuardFlags.get(flagName));
+
+    StateFlag.State wildcardState =
+        query.queryState(localPlayer.getLocation(), localPlayer, worldGuardFlags.get(WILDCARD_FLAG));
+    if (wildcardState != null) {
+      switch (wildcardState) {
+        case ALLOW -> allow = true;
+        case DENY -> {
+          return false;
+        }
+      }
+    }
+
+    return allow;
   }
 }
